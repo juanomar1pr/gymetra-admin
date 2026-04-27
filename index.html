@@ -477,6 +477,40 @@ const sb = window.supabase.createClient(
     "https://ulexxpaatpjtpgkancew.supabase.co",
     PUBLIC_KEY
 );
+let licenseRows = [];
+
+function renderLicenses(rows = licenseRows) {
+  const listEl = document.getElementById("licenseList");
+  const resultEl = document.getElementById("licenseListResult");
+  listEl.innerHTML = "";
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    resultEl.style.color = "var(--text-secondary)";
+    resultEl.textContent = "No licenses found.";
+    return;
+  }
+
+  resultEl.textContent = "";
+
+  rows.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "license-row";
+    row.innerHTML = `
+      <div class="license-key">${escapeHtml(item.license_key || "")}</div>
+      <div class="license-meta">
+        ${escapeHtml(item.customer_email || "no-email")} · max devices: ${Number(item.max_devices || 0)} ·
+        expires: ${escapeHtml(formatDateHuman(item.expires_at))}
+        <span class="status-pill status-${escapeHtml((item.status || "").toLowerCase())}">${escapeHtml(item.status || "-")}</span>
+      </div>
+      <div class="actions" style="margin-top:8px;">
+        ${(item.status || "").toLowerCase() === "revoked"
+          ? `<button class="btn btn-secondary" onclick="deleteLicense('${escapeJs(item.license_key || "")}')">Delete</button>`
+          : `<button class="btn btn-danger" onclick="revokeLicense('${escapeJs(item.license_key || "")}')">Revoke</button>`}
+      </div>
+    `;
+    listEl.appendChild(row);
+  });
+}
 async function createLicense() {
   const resultEl = document.getElementById("licenseCreateResult");
   resultEl.textContent = "";
@@ -540,9 +574,8 @@ async function createLicense() {
 }
 async function loadLicenses() {
   const resultEl = document.getElementById("licenseListResult");
-  const listEl = document.getElementById("licenseList");
-  resultEl.textContent = "";
-  listEl.innerHTML = "";
+  resultEl.style.color = "var(--text-secondary)";
+  resultEl.textContent = licenseRows.length ? "Refreshing..." : "Loading licenses...";
 
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
@@ -569,31 +602,8 @@ async function loadLicenses() {
       throw new Error(result?.error || "Failed to load licenses.");
     }
 
-    const rows = Array.isArray(result?.licenses) ? result.licenses : [];
-    if (!rows.length) {
-      resultEl.style.color = "var(--text-secondary)";
-      resultEl.textContent = "No licenses found.";
-      return;
-    }
-
-    rows.forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "license-row";
-      row.innerHTML = `
-        <div class="license-key">${escapeHtml(item.license_key || "")}</div>
-        <div class="license-meta">
-          ${escapeHtml(item.customer_email || "no-email")} · max devices: ${Number(item.max_devices || 0)} ·
-          expires: ${escapeHtml(formatDateHuman(item.expires_at))}
-          <span class="status-pill status-${escapeHtml((item.status || "").toLowerCase())}">${escapeHtml(item.status || "-")}</span>
-        </div>
-        <div class="actions" style="margin-top:8px;">
-          ${(item.status || "").toLowerCase() === "revoked"
-            ? `<button class="btn btn-secondary" onclick="deleteLicense('${escapeJs(item.license_key || "")}')">Delete</button>`
-            : `<button class="btn btn-danger" onclick="revokeLicense('${escapeJs(item.license_key || "")}')">Revoke</button>`}
-        </div>
-      `;
-      listEl.appendChild(row);
-    });
+    licenseRows = Array.isArray(result?.licenses) ? result.licenses : [];
+    renderLicenses();
   } catch (err) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = err.message || "Failed to load licenses.";
@@ -607,10 +617,18 @@ async function revokeLicense(licenseKey) {
   if (!licenseKey) return;
   if (!confirm(`Revoke license ${licenseKey}?`)) return;
 
+  const previousRows = [...licenseRows];
+  licenseRows = licenseRows.map((row) =>
+    row.license_key === licenseKey ? { ...row, status: "revoked" } : row
+  );
+  renderLicenses();
+
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = "Session expired. Please login again.";
+    licenseRows = previousRows;
+    renderLicenses();
     return;
   }
 
@@ -633,10 +651,13 @@ async function revokeLicense(licenseKey) {
 
     resultEl.style.color = "#32D74B";
     resultEl.textContent = `License revoked: ${licenseKey}`;
-    loadLicenses();
+    // keep UI stable; do light sync in background
+    setTimeout(() => loadLicenses(), 150);
   } catch (err) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = err.message || "Revoke failed.";
+    licenseRows = previousRows;
+    renderLicenses();
   }
 }
 async function deleteLicense(licenseKey) {
@@ -646,10 +667,16 @@ async function deleteLicense(licenseKey) {
   if (!licenseKey) return;
   if (!confirm(`Delete license ${licenseKey}? This cannot be undone.`)) return;
 
+  const previousRows = [...licenseRows];
+  licenseRows = licenseRows.filter((row) => row.license_key !== licenseKey);
+  renderLicenses();
+
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = "Session expired. Please login again.";
+    licenseRows = previousRows;
+    renderLicenses();
     return;
   }
 
@@ -672,7 +699,8 @@ async function deleteLicense(licenseKey) {
 
     resultEl.style.color = "#32D74B";
     resultEl.textContent = `License deleted: ${licenseKey}`;
-    loadLicenses();
+    // keep UI stable; do light sync in background
+    setTimeout(() => loadLicenses(), 150);
   } catch (err) {
     resultEl.style.color = "var(--danger)";
     const msg = err?.message || "";
@@ -681,6 +709,8 @@ async function deleteLicense(licenseKey) {
     } else {
       resultEl.textContent = msg || "Delete failed.";
     }
+    licenseRows = previousRows;
+    renderLicenses();
   }
 }
 
