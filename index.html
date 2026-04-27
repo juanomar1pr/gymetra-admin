@@ -306,6 +306,32 @@ body {
     margin-top: 4px;
 }
 
+.status-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-active {
+    background: rgba(50, 215, 75, 0.15);
+    color: #32D74B;
+}
+
+.status-revoked {
+    background: rgba(255, 69, 58, 0.15);
+    color: #ff6b62;
+}
+
+.status-expired {
+    background: rgba(255, 159, 10, 0.15);
+    color: #ffb340;
+}
+
 .field-label {
     display: block;
     font-size: 12px;
@@ -557,10 +583,14 @@ async function loadLicenses() {
         <div class="license-key">${escapeHtml(item.license_key || "")}</div>
         <div class="license-meta">
           ${escapeHtml(item.customer_email || "no-email")} · max devices: ${Number(item.max_devices || 0)} ·
-          expires: ${escapeHtml(item.expires_at || "-")} · status: ${escapeHtml(item.status || "-")}
+          expires: ${escapeHtml(formatDateHuman(item.expires_at))}
+          <span class="status-pill status-${escapeHtml((item.status || "").toLowerCase())}">${escapeHtml(item.status || "-")}</span>
         </div>
         <div class="actions" style="margin-top:8px;">
           <button class="btn btn-danger" onclick="revokeLicense('${escapeJs(item.license_key || "")}')">Revoke</button>
+          ${(item.status || "").toLowerCase() === "revoked"
+            ? `<button class="btn btn-secondary" onclick="deleteLicense('${escapeJs(item.license_key || "")}')">Delete</button>`
+            : ""}
         </div>
       `;
       listEl.appendChild(row);
@@ -609,6 +639,58 @@ async function revokeLicense(licenseKey) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = err.message || "Revoke failed.";
   }
+}
+async function deleteLicense(licenseKey) {
+  const resultEl = document.getElementById("licenseListResult");
+  resultEl.textContent = "";
+
+  if (!licenseKey) return;
+  if (!confirm(`Delete license ${licenseKey}? This cannot be undone.`)) return;
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    resultEl.style.color = "var(--danger)";
+    resultEl.textContent = "Session expired. Please login again.";
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "https://ulexxpaatpjtpgkancew.supabase.co/functions/v1/delete-license",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ license_key: licenseKey })
+      }
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error || "Failed to delete license.");
+    }
+
+    resultEl.style.color = "#32D74B";
+    resultEl.textContent = `License deleted: ${licenseKey}`;
+    loadLicenses();
+  } catch (err) {
+    resultEl.style.color = "var(--danger)";
+    resultEl.textContent = err.message || "Delete failed.";
+  }
+}
+
+function formatDateHuman(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 async function login() {
     const email = document.getElementById("email").value.trim();
