@@ -58,7 +58,56 @@ body {
     margin: 0 auto;
     padding: 120px 20px 60px 20px;
 }
+/* Dashboard layout */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    gap: 20px;
+    align-items: start;
+}
 
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.panel-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+.panel-subtitle {
+    margin: 4px 0 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.license-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+#list .card-item {
+    margin-bottom: 10px;
+}
+
+@media (max-width: 980px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
 #loginView {
     display: flex;
     justify-content: center;
