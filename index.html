@@ -441,7 +441,7 @@ body {
             </div>
 
             <div class="actions">
-                <button class="btn" onclick="createLicense()">Create License</button>
+                <button id="createLicenseBtn" class="btn" onclick="createLicense()">Create License</button>
                 <button class="btn btn-secondary" onclick="loadLicenses()">Refresh</button>
             </div>
 
@@ -478,6 +478,9 @@ const sb = window.supabase.createClient(
     PUBLIC_KEY
 );
 let licenseRows = [];
+let isCreatingLicense = false;
+let lastCreateFingerprint = "";
+let lastCreateAtMs = 0;
 
 function renderLicenses(rows = licenseRows) {
   const listEl = document.getElementById("licenseList");
@@ -513,12 +516,21 @@ function renderLicenses(rows = licenseRows) {
 }
 async function createLicense() {
   const resultEl = document.getElementById("licenseCreateResult");
+  const createBtn = document.getElementById("createLicenseBtn");
   resultEl.textContent = "";
+
+  if (isCreatingLicense) {
+    resultEl.style.color = "var(--text-secondary)";
+    resultEl.textContent = "Create already in progress...";
+    return;
+  }
 
   const email = document.getElementById("licEmail").value.trim();
   const maxDevices = Number(document.getElementById("licMaxDevices").value || "1");
   const months = Number(document.getElementById("licMonths").value || "12");
   const keyPrefix = (document.getElementById("licKeyPrefix").value || "GYM").trim().toUpperCase();
+  const fingerprint = `${email}|${maxDevices}|${months}|${keyPrefix}`;
+  const now = Date.now();
 
   if (!email) {
     resultEl.textContent = "Customer email is required.";
@@ -532,11 +544,34 @@ async function createLicense() {
     return;
   }
 
+  // Anti double-submit: same payload within 3s is ignored.
+  if (lastCreateFingerprint === fingerprint && (now - lastCreateAtMs) < 3000) {
+    resultEl.style.color = "var(--text-secondary)";
+    resultEl.textContent = "Duplicate click ignored.";
+    return;
+  }
+
+  isCreatingLicense = true;
+  const previousBtnText = createBtn?.textContent || "Create License";
+  if (createBtn) {
+    createBtn.disabled = true;
+    createBtn.textContent = "Creating...";
+    createBtn.style.opacity = "0.7";
+    createBtn.style.cursor = "not-allowed";
+  }
+
   const { data: { session } } = await sb.auth.getSession();
   if (!session) {
     resultEl.textContent = "Session expired. Please login again.";
     resultEl.style.color = "var(--danger)";
     logout();
+    isCreatingLicense = false;
+    if (createBtn) {
+      createBtn.disabled = false;
+      createBtn.textContent = previousBtnText;
+      createBtn.style.opacity = "1";
+      createBtn.style.cursor = "pointer";
+    }
     return;
   }
 
@@ -566,10 +601,20 @@ async function createLicense() {
 
     resultEl.style.color = "#32D74B";
     resultEl.textContent = `License created: ${result.license_key} (expires ${result.expires_at})`;
+    lastCreateFingerprint = fingerprint;
+    lastCreateAtMs = Date.now();
     loadLicenses();
   } catch (err) {
     resultEl.style.color = "var(--danger)";
     resultEl.textContent = err.message || "Create license failed.";
+  } finally {
+    isCreatingLicense = false;
+    if (createBtn) {
+      createBtn.disabled = false;
+      createBtn.textContent = previousBtnText;
+      createBtn.style.opacity = "1";
+      createBtn.style.cursor = "pointer";
+    }
   }
 }
 async function loadLicenses() {
