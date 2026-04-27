@@ -295,7 +295,66 @@ const sb = window.supabase.createClient(
     "https://ulexxpaatpjtpgkancew.supabase.co",
     PUBLIC_KEY
 );
+async function createLicense() {
+  const resultEl = document.getElementById("licenseCreateResult");
+  resultEl.textContent = "";
 
+  const email = document.getElementById("licEmail").value.trim();
+  const maxDevices = Number(document.getElementById("licMaxDevices").value || "1");
+  const months = Number(document.getElementById("licMonths").value || "12");
+  const keyPrefix = (document.getElementById("licKeyPrefix").value || "GYM").trim().toUpperCase();
+
+  if (!email) {
+    resultEl.textContent = "Customer email is required.";
+    resultEl.style.color = "var(--danger)";
+    return;
+  }
+
+  if (maxDevices < 1 || months < 1) {
+    resultEl.textContent = "Max devices and months must be >= 1.";
+    resultEl.style.color = "var(--danger)";
+    return;
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    resultEl.textContent = "Session expired. Please login again.";
+    resultEl.style.color = "var(--danger)";
+    logout();
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "https://ulexxpaatpjtpgkancew.supabase.co/functions/v1/create-license",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          customer_email: email,
+          max_devices: maxDevices,
+          months,
+          key_prefix: keyPrefix
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || "Failed to create license.");
+    }
+
+    resultEl.style.color = "#32D74B";
+    resultEl.textContent = `License created: ${result.license_key} (expires ${result.expires_at})`;
+  } catch (err) {
+    resultEl.style.color = "var(--danger)";
+    resultEl.textContent = err.message || "Create license failed.";
+  }
+}
 async function login() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
