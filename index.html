@@ -54,7 +54,7 @@ body {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 1240px;
     margin: 0 auto;
     padding: 120px 20px 60px 20px;
 }
@@ -71,6 +71,29 @@ body {
     border: 1px solid var(--border);
     border-radius: 20px;
     padding: 20px;
+}
+
+.panel-meets {
+    min-height: 640px;
+    display: flex;
+    flex-direction: column;
+}
+
+.list-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: 70vh;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.list-scroll::-webkit-scrollbar {
+    width: 10px;
+}
+
+.list-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
 }
 
 .panel-header {
@@ -246,6 +269,14 @@ body {
     margin-top: 10px;
 }
 
+.field-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 2px 0 6px 2px;
+    font-weight: 600;
+}
+
 @media (max-width: 600px) {
     .card-item {
         flex-direction: column;
@@ -257,6 +288,10 @@ body {
         width: 100%;
         display: grid;
         grid-template-columns: 1fr 1fr;
+    }
+
+    .license-grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>
@@ -296,30 +331,59 @@ body {
 </div>
 
 <div id="appView" class="container hidden">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
-        <div>
-            <div class="card-item" style="display:block; margin-bottom:24px;">
-  <h3 style="margin:0 0 12px 0;">Create License</h3>
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-    <input id="licEmail" class="input" type="email" placeholder="Customer email">
-    <input id="licMaxDevices" class="input" type="number" min="1" value="1" placeholder="Max devices">
-  </div>
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-    <input id="licMonths" class="input" type="number" min="1" value="12" placeholder="Duration (months)">
-    <input id="licKeyPrefix" class="input" type="text" value="GYM" placeholder="Key prefix (e.g. GYM)">
-  </div>
-  <div class="actions">
-    <button class="btn" onclick="createLicense()">Create License</button>
-  </div>
-  <div id="licenseCreateResult" class="notice"></div>
-</div>
-            <h2 class="title" style="margin:0">Active Meets</h2>
-            <p style="color: var(--text-secondary); margin: 4px 0 0 0;">Manage your live events.</p>
-        </div>
+    <div class="panel-header" style="margin-bottom: 20px;">
+        <div class="brand" style="font-size: 20px;">Control Panel</div>
         <button class="btn btn-secondary" onclick="logout()">Logout</button>
     </div>
 
-    <div id="list" class="list"></div>
+    <div class="dashboard-grid">
+        <section class="panel panel-meets">
+            <div class="panel-header">
+                <div>
+                    <h2 class="panel-title">Active Meets</h2>
+                    <p class="panel-subtitle">Manage your live events.</p>
+                </div>
+            </div>
+            <div id="list" class="list list-scroll"></div>
+        </section>
+
+        <aside class="panel">
+            <div class="panel-header" style="margin-bottom:10px;">
+                <div>
+                    <h3 style="margin:0;">Create License</h3>
+                    <p class="panel-subtitle">Generate a new customer license.</p>
+                </div>
+            </div>
+
+            <div class="license-grid">
+                <div>
+                    <label class="field-label" for="licEmail">Customer email</label>
+                    <input id="licEmail" class="input" type="email" placeholder="customer@email.com">
+                </div>
+                <div>
+                    <label class="field-label" for="licMaxDevices">Max devices (default: 1)</label>
+                    <input id="licMaxDevices" class="input" type="number" min="1" value="1" placeholder="1">
+                </div>
+            </div>
+
+            <div class="license-grid">
+                <div>
+                    <label class="field-label" for="licMonths">Duration in months (default: 12)</label>
+                    <input id="licMonths" class="input" type="number" min="1" value="12" placeholder="12">
+                </div>
+                <div>
+                    <label class="field-label" for="licKeyPrefix">Key prefix</label>
+                    <input id="licKeyPrefix" class="input" type="text" value="GYM" placeholder="GYM">
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn" onclick="createLicense()">Create License</button>
+            </div>
+
+            <div id="licenseCreateResult" class="notice"></div>
+        </aside>
+    </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -458,20 +522,24 @@ async function checkConnection() {
     }
 }
 
-function load() {
-    fetch(`${SB_BASE_URL}/meets?select=slug&order=slug.asc`, {
-        headers: {
-            apikey: PUBLIC_KEY,
-            Authorization: `Bearer ${PUBLIC_KEY}`
+async function load() {
+    const {
+        data: { session }
+    } = await sb.auth.getSession();
+
+    if (!session) {
+        document.getElementById("list").innerHTML =
+            '<div style="color:var(--danger); padding: 20px;">Session expired. Please login again.</div>';
+        return;
+    }
+
+    sb.from("meets")
+    .select("slug")
+    .order("slug", { ascending: true })
+    .then(({ data, error }) => {
+        if (error) {
+            throw new Error(error.message || "Load failed.");
         }
-    })
-    .then(async (r) => {
-        if (!r.ok) {
-            throw new Error(`Load failed: ${r.status}`);
-        }
-        return r.json();
-    })
-    .then((data) => {
         const container = document.getElementById("list");
         container.innerHTML = "";
 
@@ -500,7 +568,7 @@ function load() {
     .catch((err) => {
         console.error("Loading error:", err);
         document.getElementById("list").innerHTML =
-            '<div style="color:var(--danger); padding: 20px;">Failed to load meets.</div>';
+            `<div style="color:var(--danger); padding: 20px;">Failed to load meets: ${escapeHtml(err?.message || "unknown error")}</div>`;
     });
 }
 
