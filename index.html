@@ -587,10 +587,9 @@ async function loadLicenses() {
           <span class="status-pill status-${escapeHtml((item.status || "").toLowerCase())}">${escapeHtml(item.status || "-")}</span>
         </div>
         <div class="actions" style="margin-top:8px;">
-          <button class="btn btn-danger" onclick="revokeLicense('${escapeJs(item.license_key || "")}')">Revoke</button>
           ${(item.status || "").toLowerCase() === "revoked"
             ? `<button class="btn btn-secondary" onclick="deleteLicense('${escapeJs(item.license_key || "")}')">Delete</button>`
-            : ""}
+            : `<button class="btn btn-danger" onclick="revokeLicense('${escapeJs(item.license_key || "")}')">Revoke</button>`}
         </div>
       `;
       listEl.appendChild(row);
@@ -676,7 +675,12 @@ async function deleteLicense(licenseKey) {
     loadLicenses();
   } catch (err) {
     resultEl.style.color = "var(--danger)";
-    resultEl.textContent = err.message || "Delete failed.";
+    const msg = err?.message || "";
+    if (msg.toLowerCase().includes("failed to fetch")) {
+      resultEl.textContent = "Delete failed: missing or unreachable delete-license function (or CORS).";
+    } else {
+      resultEl.textContent = msg || "Delete failed.";
+    }
   }
 }
 
