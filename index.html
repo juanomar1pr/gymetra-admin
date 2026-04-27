@@ -249,6 +249,21 @@ body {
 <div id="appView" class="container hidden">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
         <div>
+            <div class="card-item" style="display:block; margin-bottom:24px;">
+  <h3 style="margin:0 0 12px 0;">Create License</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+    <input id="licEmail" class="input" type="email" placeholder="Customer email">
+    <input id="licMaxDevices" class="input" type="number" min="1" value="1" placeholder="Max devices">
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+    <input id="licMonths" class="input" type="number" min="1" value="12" placeholder="Duration (months)">
+    <input id="licKeyPrefix" class="input" type="text" value="GYM" placeholder="Key prefix (e.g. GYM)">
+  </div>
+  <div class="actions">
+    <button class="btn" onclick="createLicense()">Create License</button>
+  </div>
+  <div id="licenseCreateResult" class="notice"></div>
+</div>
             <h2 class="title" style="margin:0">Active Meets</h2>
             <p style="color: var(--text-secondary); margin: 4px 0 0 0;">Manage your live events.</p>
         </div>
