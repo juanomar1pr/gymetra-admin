@@ -788,6 +788,28 @@ function formatDateHuman(value) {
 }
 let accountsPage = 1;
 let accountsLoading = false;
+let moderationInFlight = false;
+
+async function moderatePublication(button, rpc, parameters, question) {
+  if (moderationInFlight || accountsLoading || !window.confirm(question)) return;
+  moderationInFlight = true;
+  button.disabled = true;
+  const status = document.getElementById('accountsStatus');
+  status.textContent = 'Saving...';
+  try {
+    const { error } = await sb.rpc(rpc, parameters);
+    if (error) throw error;
+    await loadAccounts();
+    load();
+  } catch (error) {
+    status.textContent = error.code === '42501'
+      ? 'Administrator access required. No change was confirmed.'
+      : 'Could not confirm the change. Refresh to check its current state.';
+  } finally {
+    moderationInFlight = false;
+    button.disabled = false;
+  }
+}
 
 async function loadAccounts(page = accountsPage) {
   if (accountsLoading) return;
@@ -813,6 +835,23 @@ async function loadAccounts(page = accountsPage) {
       meta.className = 'license-meta';
       meta.textContent = `${account.verified ? 'Verified' : 'Unverified'} · Registered: ${formatDateHuman(account.created_at)} · Last sign-in: ${formatDateHuman(account.last_sign_in_at)} · Meets: ${account.meet_count}`;
       card.append(meta);
+      const state = document.createElement('div');
+      state.className = 'license-meta';
+      state.textContent = account.is_admin ? 'Administrator' :
+        (account.publishing_blocked ? 'Publishing blocked' : 'Publishing allowed');
+      card.append(state);
+      if (!account.is_admin) {
+        const block = document.createElement('button');
+        block.type = 'button';
+        block.className = account.publishing_blocked ? 'btn btn-secondary' : 'btn btn-danger';
+        block.style.marginTop = '8px';
+        block.textContent = account.publishing_blocked ? 'Allow publishing' : 'Block publishing';
+        block.addEventListener('click', () => moderatePublication(block,
+          'gymetra_admin_set_account_block', { account_id: account.id, blocked: !account.publishing_blocked },
+          account.publishing_blocked ? `Allow publishing for ${account.email}?` :
+            `Block new publications and updates for ${account.email}? Existing public meets remain visible.`));
+        card.append(block);
+      }
       if (account.publications?.length) {
         const label = document.createElement('div');
         label.className = 'license-meta';
@@ -828,6 +867,16 @@ async function loadAccounts(page = accountsPage) {
           link.rel = 'noopener noreferrer';
           link.style.color = 'var(--accent)';
           row.append(link, document.createTextNode(` · ${meet.is_hidden ? 'Hidden' : 'Visible'} · First published: ${formatDateHuman(meet.created_at)}`));
+          const visibility = document.createElement('button');
+          visibility.type = 'button';
+          visibility.className = meet.is_hidden ? 'btn btn-secondary' : 'btn btn-danger';
+          visibility.style.margin = '8px';
+          visibility.textContent = meet.is_hidden ? 'Restore meet' : 'Hide meet';
+          visibility.addEventListener('click', () => moderatePublication(visibility,
+            'gymetra_admin_set_meet_hidden', { meet_id: meet.id, hidden: !meet.is_hidden },
+            meet.is_hidden ? `Restore public access to ${meet.name || meet.slug}?` :
+              `Hide ${meet.name || meet.slug} from the public website? Its data will be kept.`));
+          row.append(visibility);
           card.append(row);
         }
       }
