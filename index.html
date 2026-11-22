@@ -453,6 +453,21 @@ body {
             <div id="licenseList" class="license-list"></div>
         </aside>
     </div>
+    <section class="panel" style="margin-top:20px;">
+        <div class="panel-header">
+            <div>
+                <h2 class="panel-title">Accounts &amp; Publications</h2>
+                <p class="panel-subtitle">Verified accounts and their latest published meets. Last sign-in is not live online status.</p>
+            </div>
+            <button class="btn btn-secondary" onclick="loadAccounts()">Refresh</button>
+        </div>
+        <p id="accountsStatus" class="notice"></p>
+        <div id="accountsList" class="list-scroll"></div>
+        <div class="actions" style="margin-top:12px;">
+            <button id="accountsPrevious" class="btn btn-secondary" onclick="loadAccounts(accountsPage - 1)" disabled>Previous</button>
+            <button id="accountsNext" class="btn btn-secondary" onclick="loadAccounts(accountsPage + 1)" disabled>Next</button>
+        </div>
+    </section>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -771,6 +786,72 @@ function formatDateHuman(value) {
     minute: "2-digit"
   });
 }
+let accountsPage = 1;
+let accountsLoading = false;
+
+async function loadAccounts(page = accountsPage) {
+  if (accountsLoading) return;
+  accountsLoading = true;
+  const status = document.getElementById('accountsStatus');
+  const list = document.getElementById('accountsList');
+  const previous = document.getElementById('accountsPrevious');
+  const next = document.getElementById('accountsNext');
+  previous.disabled = next.disabled = true;
+  status.textContent = 'Loading accounts...';
+  list.replaceChildren();
+  try {
+    const { data, error } = await sb.rpc('gymetra_admin_accounts', { page_number: page });
+    if (error) throw error;
+    accountsPage = page;
+    for (const account of data.accounts || []) {
+      const card = document.createElement('div');
+      card.className = 'license-row';
+      const email = document.createElement('strong');
+      email.textContent = account.email || 'No email';
+      card.append(email);
+      const meta = document.createElement('div');
+      meta.className = 'license-meta';
+      meta.textContent = `${account.verified ? 'Verified' : 'Unverified'} · Registered: ${formatDateHuman(account.created_at)} · Last sign-in: ${formatDateHuman(account.last_sign_in_at)} · Meets: ${account.meet_count}`;
+      card.append(meta);
+      if (account.publications?.length) {
+        const label = document.createElement('div');
+        label.className = 'license-meta';
+        label.textContent = 'Latest publications (up to 5):';
+        card.append(label);
+        for (const meet of account.publications) {
+          const row = document.createElement('div');
+          row.className = 'license-meta';
+          const link = document.createElement('a');
+          link.textContent = meet.name || meet.slug;
+          link.href = `https://gymetra.net/meets/view.html?slug=${encodeURIComponent(meet.slug)}`;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.style.color = 'var(--accent)';
+          row.append(link, document.createTextNode(` · ${meet.is_hidden ? 'Hidden' : 'Visible'} · First published: ${formatDateHuman(meet.created_at)}`));
+          card.append(row);
+        }
+      }
+      list.append(card);
+    }
+    status.textContent = `${data.total} accounts · Page ${page} · ${data.unassigned_meets} legacy meets without an assigned owner`;
+    previous.disabled = page <= 1;
+    next.disabled = page * 25 >= data.total;
+    return true;
+  } catch (error) {
+    status.textContent = error.code === '42501'
+      ? 'Administrator access required.'
+      : 'Could not load accounts. Check that 02_admin_accounts.sql has been installed.';
+    return false;
+  } finally {
+    accountsLoading = false;
+  }
+}
+
+async function authorizeAdmin() {
+  const { error } = await sb.rpc('gymetra_admin_accounts', { page_number: 1 });
+  return !error;
+}
+
 async function login() {
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value.trim();
@@ -805,10 +886,17 @@ async function login() {
         return;
     }
 
+    if (!(await authorizeAdmin())) {
+        await sb.auth.signOut();
+        showLogin();
+        errorEl.textContent = "Administrator access could not be verified.";
+        return;
+    }
     sessionStorage.setItem("gymetra_admin", "true");
-
     showApp();
     load();
+    loadLicenses();
+    loadAccounts(1);
 }
 
 async function checkConnection() {
@@ -916,6 +1004,8 @@ async function deleteMeet(slug) {
 async function logout() {
     await sb.auth.signOut();
     sessionStorage.removeItem("gymetra_admin");
+    document.getElementById("accountsList").replaceChildren();
+    document.getElementById("accountsStatus").textContent = "";
     document.getElementById("email").value = "";
     document.getElementById("password").value = "";
     showLogin();
@@ -936,12 +1026,13 @@ function escapeJs(value) {
         .replaceAll("'", "\\'");
 }
 
-sb.auth.getSession().then(({ data }) => {
-    if (data.session) {
+sb.auth.getSession().then(async ({ data }) => {
+    if (data.session && await authorizeAdmin()) {
         sessionStorage.setItem("gymetra_admin", "true");
         showApp();
         load();
         loadLicenses();
+        loadAccounts(1);
     } else {
         showLogin();
     }
